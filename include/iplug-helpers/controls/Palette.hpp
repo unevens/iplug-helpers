@@ -72,18 +72,32 @@ inline const IText kRowLabelText    (15, IColor(255, 200, 220, 230),
 //       meters). Dark base, cyan accents, slim 1 px frames. Label / value
 //       text both at 15 pt so knob names, button face text, and matrix
 //       headers line up with the 15 pt editable caption readouts.
-inline const IVStyle kPanelStyle = iplug::igraphics::DEFAULT_STYLE
-  .WithColor(iplug::igraphics::kBG, IColor(255,  20,  26,  32))
-  .WithColor(iplug::igraphics::kFG, IColor(255,  60, 110, 130))
-  .WithColor(iplug::igraphics::kPR, IColor(255,  80, 200, 230))
-  .WithColor(iplug::igraphics::kFR, IColor(255,  60,  85, 100))
-  .WithColor(iplug::igraphics::kHL, IColor(255, 120, 180, 200))
-  .WithColor(iplug::igraphics::kSH, IColor(255,   4,   8,  12))
-  .WithColor(iplug::igraphics::kX1, IColor(255, 240, 170,  90))
-  .WithFrameThickness(1.f)
-  .WithLabelText(IText(15, IColor(255, 200, 220, 230),
-                       "Roboto-Bold", EAlign::Center))
-  .WithValueText(IText(15, IColor(255, 200, 220, 230),
-                       nullptr, EAlign::Center));
+//
+// Returned by an inline FACTORY (not a header-level inline const variable)
+// because IVStyle's runtime-only constructor + the .WithColor / .WithFrame
+// chain depends on DEFAULT_STYLE — which is a non-constexpr namespace-scope
+// const in IGraphicsStructs.h. A header-defined `inline const IVStyle` here
+// would hit a static-initialisation-order fiasco against DEFAULT_STYLE
+// (kPanelStyle ends up copying a zero-initialised IVStyle, which renders
+// as tiny invisible knobs and text-less buttons). With a factory, the
+// plugin's TU-local `static const IVStyle kPluginStyle = MakePanelStyle();`
+// runs after DEFAULT_STYLE is set up in the same TU, so init order is
+// well-defined.
+inline iplug::igraphics::IVStyle MakePanelStyle()
+{
+  return iplug::igraphics::DEFAULT_STYLE
+    .WithColor(iplug::igraphics::kBG, IColor(255,  20,  26,  32))
+    .WithColor(iplug::igraphics::kFG, IColor(255,  60, 110, 130))
+    .WithColor(iplug::igraphics::kPR, IColor(255,  80, 200, 230))
+    .WithColor(iplug::igraphics::kFR, IColor(255,  60,  85, 100))
+    .WithColor(iplug::igraphics::kHL, IColor(255, 120, 180, 200))
+    .WithColor(iplug::igraphics::kSH, IColor(255,   4,   8,  12))
+    .WithColor(iplug::igraphics::kX1, IColor(255, 240, 170,  90))
+    .WithFrameThickness(1.f)
+    .WithLabelText(IText(15, IColor(255, 200, 220, 230),
+                         "Roboto-Bold", EAlign::Center))
+    .WithValueText(IText(15, IColor(255, 200, 220, 230),
+                         nullptr, EAlign::Center));
+}
 
 } // namespace iplug_helpers
