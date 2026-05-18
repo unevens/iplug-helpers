@@ -280,11 +280,21 @@ public:
     SetDirty(false);
   }
 
-  // Double-click toggles a knot's state. Matches the JUCE editor:
-  //   - left / no-mod double-click on a knot → toggle `enabled` (add/remove)
-  //   - right / alt double-click on a knot   → toggle `linked` (split L/R)
-  // Disabled knots are hit-testable (drawn faintly as ghosts) so users can
-  // re-enable them by double-clicking.
+  // Double-click toggles the knot. Defaults to toggling `enabled` —
+  // the per-button preference (LMB prefers ch0, RMB / Alt prefers ch1)
+  // affects which knot the dblclick resolves to but not what gets
+  // toggled — EXCEPT: when the resolved channel is ch1 AND the knot
+  // is currently enabled, we toggle `linked` instead. So:
+  //
+  //   - LMB-dblclick anywhere on a knot → toggle enabled
+  //   - RMB-dblclick on an enabled knot (resolves to ch1) → toggle linked
+  //   - RMB-dblclick on a disabled (ghost) knot → toggle enabled (re-enable);
+  //     the linked-toggle path is gated on `enabled` because toggling the
+  //     link bit of a disabled knot has no visible effect and would mask
+  //     the more useful "bring this ghost back" gesture.
+  //
+  // Disabled knots are hit-testable (drawn faintly as ghosts) so users
+  // can re-enable them by double-clicking on them.
   void OnMouseDblClick(float x, float y, const IMouseMod& mod) override
   {
     const bool preferCh1 = mod.R || mod.A;
@@ -295,11 +305,11 @@ public:
     }
     const int base = Traits::kFirstKnotParamBase + hit.knot * Traits::kKnotParamStride;
     auto* del = GetDelegate();
-    if (preferCh1) {
+    const bool enabled = del->GetParam(base + 0)->Bool();
+    if (enabled && hit.channel == 1) {
       const bool linked = del->GetParam(base + 1)->Bool();
       SetParamBoolFromUI(base + 1, !linked);
     } else {
-      const bool enabled = del->GetParam(base + 0)->Bool();
       SetParamBoolFromUI(base + 0, !enabled);
     }
     // Make this knot the selection so the side panel binds to it.
@@ -602,11 +612,23 @@ private:
     SetParamFromUI(paramIdx, value ? 1.0 : 0.0);
   }
 
-  // Hit-test knots, returning the nearest hit subject to channel-preference
-  // and enabled-state filters. Mirrors juicy/SplineEditor::selectKnot — the
-  // RMB / Alt modifier biases toward ch1 when both channels of an unlinked
-  // knot sit at the same screen position. For double-click we also include
-  // disabled knots so the user can target their (ghost-drawn) positions.
+  // Hit-test knots, returning the nearest in-range hit subject to a
+  // per-button channel preference and the enabled-state filter:
+  //
+  //   - LMB (preferCh1 == false): prefer ch0; fall back to ch1 if ch0
+  //     has no hit in range — so you can still grab a side-only knot
+  //     with the left button if its ch0 isn't reachable.
+  //   - RMB / Alt (preferCh1 == true): prefer ch1; fall back to ch0
+  //     if ch1 has no hit (typical for a linked knot, which has no
+  //     ch1 candidate by design).
+  //
+  // For double-click we also include disabled knots so the user can
+  // target their (ghost-drawn) positions to re-enable them.
+  //
+  // Linked knots only contribute a ch0 candidate — ch1 of a linked
+  // knot is just a mirror of ch0, so making them compete in the pick
+  // would just produce stacked entries that bias the result toward
+  // whichever of the two stacked positions the mouse landed nearer to.
   KnotHit FindKnotAt(float x, float y,
                      bool preferCh1 = false,
                      bool includeDisabled = false)
@@ -637,17 +659,13 @@ private:
       }
     }
 
-    // Pick channel preference; fall back to the other if the preferred has
-    // no hit.
-    int pick;
-    if (preferCh1 && nearest[1].knot >= 0) {
-      pick = 1;
-    } else if (nearest[0].knot >= 0 && nearest[1].knot >= 0) {
-      pick = (nearestDist2[0] <= nearestDist2[1]) ? 0 : 1;
-    } else {
-      pick = (nearest[0].knot >= 0) ? 0 : 1;
+    // Per-button preference with fallback to the other channel.
+    const int primary  = preferCh1 ? 1 : 0;
+    const int fallback = preferCh1 ? 0 : 1;
+    if (nearest[primary].knot >= 0) {
+      return nearest[primary];
     }
-    return nearest[pick];
+    return nearest[fallback];
   }
 
   // Tangent handle hit-test, on the currently-selected knot/channel only.
